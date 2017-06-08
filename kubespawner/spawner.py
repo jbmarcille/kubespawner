@@ -45,6 +45,7 @@ class KubeSpawner(Spawner):
         self.request = request_maker()
         self.pod_name = self._expand_user_properties(self.pod_name_template)
         self.pvc_name = self._expand_user_properties(self.pvc_name_template)
+        self.singleuser_working_dir = self._expand_user_properties(self.singleuser_working_dir)
         if self.hub_connect_ip:
             scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
             netloc = '{ip}:{port}'.format(
@@ -814,6 +815,7 @@ class KubeSpawner(Spawner):
             'JPY_COOKIE_NAME': self.user.server.cookie_name,
             'JPY_BASE_URL': self.user.server.base_url,
             'JPY_HUB_PREFIX': self.hub.server.base_url,
-            'JPY_HUB_API_URL': self.accessible_hub_api_url
+            'JPY_HUB_API_URL': self.accessible_hub_api_url,
+            'NOTEBOOK_DIR' = self.singleuser_working_dir
         })
         return env
