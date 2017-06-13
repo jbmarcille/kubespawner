@@ -816,6 +816,6 @@ class KubeSpawner(Spawner):
             'JPY_BASE_URL': self.user.server.base_url,
             'JPY_HUB_PREFIX': self.hub.server.base_url,
             'JPY_HUB_API_URL': self.accessible_hub_api_url,
-            'NOTEBOOK_DIR' = self.singleuser_working_dir
+            'NOTEBOOK_DIR' : self.singleuser_working_dir
         })
         return env
