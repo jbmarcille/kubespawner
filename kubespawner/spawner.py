@@ -19,7 +19,7 @@ from kubernetes.client.models.v1_volume_mount import V1VolumeMount
 
 from kubespawner.traitlets import Callable
 from kubespawner.utils import request_maker, k8s_url
-from kubespawner.objects import make_pod_spec, make_pvc_spec
+from kubespawner.objects import make_pod_spec, make_pvc_spec, get_hub_ip_from_service
 
 
 class KubeSpawner(Spawner):
@@ -51,6 +51,13 @@ class KubeSpawner(Spawner):
             netloc = '{ip}:{port}'.format(
                 ip=self.hub_connect_ip,
                 port=self.hub_connect_port,
+            )
+            self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
+        elif self.hub_service_name and self.hub_service_port:
+            scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
+            netloc = '{ip}:{port}'.format(
+                ip=get_hub_ip_from_service(self.hub_service_name),
+                port=self.hub_service_port,
             )
             self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
         else:
@@ -194,6 +201,30 @@ class KubeSpawner(Spawner):
         In kubernetes contexts, this is often not the same as `hub_port`,
         since the hub runs in a pod which is fronted by a service. This
         allows easy port mapping, and some systems take advantage of it.
+
+        This should be set to the `port` attribute of a service that is
+        fronting the hub pod.
+        """
+    )
+
+    hub_service_name = Unicode(
+        None,
+        config=True,
+        allow_none=False,
+        help="""
+        IP/DNS hostname to be used by pods to reach out to the hub API.
+        Defaults to `None`, in which case an error is raised.
+        Used together with `hub_service_port` configuration.
+        """
+    )
+
+    hub_service_port = Integer(
+        80,
+        config=True,
+        help="""
+        Port to use by pods to reach out to the hub API.
+
+        Defaults to port 80.
 
         This should be set to the `port` attribute of a service that is
         fronting the hub pod.

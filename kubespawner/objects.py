@@ -1,8 +1,8 @@
 """
 Helper methods for generating k8s API objects.
 """
-
 from kubernetes.client import ApiClient
+
 from kubernetes.client.models.v1_pod import V1Pod
 from kubernetes.client.models.v1_pod_spec import V1PodSpec
 from kubernetes.client.models.v1_object_meta import V1ObjectMeta
@@ -17,6 +17,40 @@ from kubernetes.client.models.v1_resource_requirements import V1ResourceRequirem
 from kubernetes.client.models.v1_persistent_volume_claim import V1PersistentVolumeClaim
 from kubernetes.client.models.v1_persistent_volume_claim_spec import V1PersistentVolumeClaimSpec
 
+def get_hub_ip_from_service(
+    namespaced_service, 
+    pretty=True,
+    exact=True,
+    export=True
+):
+    """
+    Retrieve the cluster IP associated to the namespaced service name
+
+    Parameters:
+      - namepsaced_service: 
+        Name of the service attached to the Juyterhub POD using servicename.namespace format.
+      - pretty:
+        If 'true', then the output is pretty printed. (optional).
+      - exact:
+        Should the export be exact.  Exact export maintains cluster-specific fields like 'Namespace'. (optional).
+      - export:
+        Should this value be exported.  Export strips fields that a user can not specify. (optional)
+    """
+    ip = None
+    api_instance = kubernetes.client.CoreV1Api()
+    try: 
+        tmp = namespaced_service.split('.')
+        name = tmp[0]
+        namespace = tmp[1] if tmp[1] else 'default'
+        apiservice = api_instance.read_namespaced_service(name, namespace, pretty=pretty, exact=exact, export=export)
+        if (apiservice.spec.load_balancer_ip):
+            ip = apiservice.status.load_balancer.ingress[0].ip
+        else:
+            ip = apiservice.spec.cluster_ip
+        return ip
+    except Exception as e:
+        print("Exception when calling CoreV1Api->read_namespaced_service (%s.%s): %s\n" % (service, namespace, e))
+        return None
 
 def make_pod_spec(
     name,
