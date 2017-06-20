@@ -49,7 +49,7 @@ def get_hub_ip_from_service(
             ip = apiservice.spec.cluster_ip
         return ip
     except Exception as e:
-        print("Exception when calling CoreV1Api->read_namespaced_service (%s.%s): %s\n" % (service, namespace, e))
+        print("Exception when calling CoreV1Api->read_namespaced_service (%s): %s\n" % (namespaced_service, e))
         return None
 
 def make_pod_spec(
