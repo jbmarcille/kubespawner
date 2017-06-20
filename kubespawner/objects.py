@@ -1,7 +1,7 @@
 """
 Helper methods for generating k8s API objects.
 """
-from kubernetes.client import ApiClient
+from kubernetes.client import ApiClient, CoreV1Api
 
 from kubernetes.client.models.v1_pod import V1Pod
 from kubernetes.client.models.v1_pod_spec import V1PodSpec
@@ -37,7 +37,7 @@ def get_hub_ip_from_service(
         Should this value be exported.  Export strips fields that a user can not specify. (optional)
     """
     ip = None
-    api_instance = kubernetes.client.CoreV1Api()
+    api_instance = CoreV1Api()
     try: 
         tmp = namespaced_service.split('.')
         name = tmp[0]
