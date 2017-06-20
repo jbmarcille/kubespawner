@@ -210,7 +210,7 @@ class KubeSpawner(Spawner):
     hub_service_name = Unicode(
         None,
         config=True,
-        allow_none=False,
+        allow_none=True,
         help="""
         IP/DNS hostname to be used by pods to reach out to the hub API.
         Defaults to `None`, in which case an error is raised.
