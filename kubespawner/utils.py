@@ -50,10 +50,9 @@ def request_maker_serviceaccount():
         default_ca_cert_file = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
         headers = kwargs.get('headers', {})
         headers['Authorization'] = 'Bearer {token}'.format(token=token)
-        ca_cert_file =  default_ca_cert_file if os.path.exists(default_ca_cert_file) else ca_cert_file
         kwargs.update({
             'url': api_url + url,
-            'ca_certs': ,
+            'ca_certs': default_ca_cert_file if os.path.exists(default_ca_cert_file) else ca_cert_file,
             'headers': headers,
         })
         return HTTPRequest(**kwargs)
