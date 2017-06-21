@@ -46,11 +46,14 @@ def request_maker_serviceaccount():
          * ca_certs
            Appropriate CA bundle path will be set
         """
+        ca_cert_file =  '/usr/local/share/ca-certificates/airmes/ca.crt'
+        default_ca_cert_file = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
         headers = kwargs.get('headers', {})
         headers['Authorization'] = 'Bearer {token}'.format(token=token)
+        ca_cert_file =  default_ca_cert_file if os.path.exists(default_ca_cert_file) else ca_cert_file
         kwargs.update({
             'url': api_url + url,
-            'ca_certs': '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt',
+            'ca_certs': ,
             'headers': headers,
         })
         return HTTPRequest(**kwargs)
