@@ -55,8 +55,9 @@ class KubeSpawner(Spawner):
             self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
         elif self.hub_service_name and self.hub_service_port:
             scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
+            hup_service_ip = self.get_hub_ip_from_service(self.hub_service_name)
             netloc = '{ip}:{port}'.format(
-                ip=self.get_hub_ip_from_service(self.hub_service_name),
+                ip=hup_service_ip,
                 port=self.hub_service_port,
             )
             self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
@@ -587,13 +588,15 @@ class KubeSpawner(Spawner):
     def get_hub_ip_from_service(self, namespaced_service):
         data = yield self.get_service_spec(namespaced_service)
         if data:
+            hub_service_ip = None
             self.log.debug(json.dump(data,sort_keys=True,indent=2))
             try:
                 if (data['spec']['load_balancer_ip']):
-                    return data['status']['load_balancer']['ingress'][0]['ip']
+                    hub_service_ip = data['status']['load_balancer']['ingress'][0]['ip']
             except KeyError:
-                return data['spec']['cluster_ip']
-        self.log.error('Failed to retrieve service %s spec.' % (namespaced_service))
+                hub_service_ip = data['spec']['cluster_ip']
+            finally:
+                return hub_service_ip
 
     @gen.coroutine
     def get_service_spec(self, namespaced_service):
