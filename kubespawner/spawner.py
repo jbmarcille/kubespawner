@@ -596,9 +596,13 @@ class KubeSpawner(Spawner):
         api_instance = CoreV1Api()
         kubernetes.client.configuration.api_key['authorization'] = load_serviceaccount_token()
         try: 
-            tmp = namespaced_service.split('.')
-            name = tmp[0]
-            namespace = tmp[1] if tmp[1] else 'default'
+            name = namespaced_service
+            namespace = 'default'
+            nssepcount = namespaced_service.count('.')
+            if nssepcount == 1:
+                name, namespace = namespaced_service.split('.')
+            elif nssepcount > 1:
+                name, namespace, _ = namespaced_service.split('.')
             self.log.debug('Resolving service \"%s.%s\" IP' % (name, namespae))
             apiservice = api_instance.read_namespaced_service(name, namespace, pretty=pretty, exact=exact, export=export)
             if (apiservice.spec.load_balancer_ip):
