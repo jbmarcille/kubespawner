@@ -14,6 +14,7 @@ from tornado.httpclient import HTTPError
 from traitlets import Type, Unicode, List, Integer, Union, Dict, Bool
 from jupyterhub.spawner import Spawner
 from jupyterhub.traitlets import Command
+from kubernetes.client import CoreV1Api
 from kubernetes.client.models.v1_volume import V1Volume
 from kubernetes.client.models.v1_volume_mount import V1VolumeMount
 
