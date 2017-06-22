@@ -56,7 +56,7 @@ class KubeSpawner(Spawner):
         elif self.hub_service_name and self.hub_service_port:
             scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
             netloc = '{ip}:{port}'.format(
-                ip=self._get_hub_ip_from_service(self.hub_service_name),
+                ip=self.get_hub_ip_from_service(self.hub_service_name),
                 port=self.hub_service_port,
             )
             self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
@@ -594,7 +594,7 @@ class KubeSpawner(Spawner):
         elif nssepcount > 1:
             name, namespace, _ = namespaced_service.split('.')
         self.log.debug('Resolving service \"%s.%s\" IP' % (name, namespace))
-            
+
         try:
             response = yield self.httpclient.fetch(self.request(
                 k8s_url(
