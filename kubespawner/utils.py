@@ -54,6 +54,7 @@ def request_maker_serviceaccount():
             'url': api_url + url,
             'ca_certs': default_ca_cert_file if os.path.exists(default_ca_cert_file) else ca_cert_file,
             'headers': headers,
+            'validate_cert': False
         })
         return HTTPRequest(**kwargs)
 
