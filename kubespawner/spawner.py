@@ -19,7 +19,7 @@ from kubernetes.client.models.v1_volume_mount import V1VolumeMount
 
 from kubespawner.traitlets import Callable
 from kubespawner.utils import request_maker, k8s_url, load_serviceaccount_token
-from kubespawner.objects import make_pod_spec, make_pvc_spec, get_hub_ip_from_service
+from kubespawner.objects import make_pod_spec, make_pvc_spec
 
 
 class KubeSpawner(Spawner):
