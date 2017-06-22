@@ -582,10 +582,10 @@ class KubeSpawner(Spawner):
         data = yield self.get_service_spec(namespaced_service)
         if data:
             try:
-                if (data['spec']['load_balancer_ip']):
-                    return data['status']['load_balancer']['ingress'][0]['ip']
+                if (data['spec']['loadBalancerIP']):
+                    return data['status']['loadBalancer']['ingress'][0]['IP']
             except KeyError:
-                return data['spec']['cluster_ip']
+                return data['spec']['clusterIP']
 
     @gen.coroutine
     def get_service_spec(self, namespaced_service):
@@ -596,7 +596,6 @@ class KubeSpawner(Spawner):
             name, namespace = namespaced_service.split('.')
         elif nssepcount > 1:
             name, namespace, _ = namespaced_service.split('.')
-        self.log.debug('Resolving service \"%s.%s\" IP' % (name, namespace))
 
         try:
             response = yield self.httpclient.fetch(self.request(
