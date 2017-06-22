@@ -584,8 +584,19 @@ class KubeSpawner(Spawner):
         else:
             return src
 
-    @gen.coroutine
     def get_hub_ip_from_service(self, namespaced_service):
+        data = yield self.get_service_spec(namespaced_service)
+        if data:
+            self.log.debug(json.dump(data,sort_keys=True,indent=2))
+            try:
+                if (data['spec']['load_balancer_ip']):
+                    return data['status']['load_balancer']['ingress'][0]['ip']
+            except KeyError:
+                return data['spec']['cluster_ip']
+        self.log.error('Failed to retrieve service %s spec.' % (namespaced_service))
+
+    @gen.coroutine
+    def get_service_spec(self, namespaced_service):
         name = namespaced_service
         namespace = 'default'
         nssepcount = namespaced_service.count('.')
@@ -607,12 +618,7 @@ class KubeSpawner(Spawner):
             if e.code == 404:
                 return None
             raise
-        data = json.loads(response.body.decode('utf-8'))
-        try:
-            if (data['spec']['load_balancer_ip']):
-                return data['status']['load_balancer']['ingress'][0]['ip']
-        except KeyError:
-            return data['spec']['cluster_ip']
+        return json.loads(response.body.decode('utf-8'))
 
     @gen.coroutine
     def get_pod_manifest(self):
