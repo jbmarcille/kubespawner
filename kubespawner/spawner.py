@@ -608,9 +608,11 @@ class KubeSpawner(Spawner):
                 return None
             raise
         data = json.loads(response.body.decode('utf-8'))
-        if (data['spec']['load_balancer_ip']):
-            return data['status']['load_balancer']['ingress'][0]['ip']
-        return data['spec']['cluster_ip']
+        try:
+            if (data['spec']['load_balancer_ip']):
+                return data['status']['load_balancer']['ingress'][0]['ip']
+        except KeyError:
+            return data['spec']['cluster_ip']
 
     @gen.coroutine
     def get_pod_manifest(self):
