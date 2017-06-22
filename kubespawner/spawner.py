@@ -7,7 +7,6 @@ implementation that should be used by JupyterHub.
 import os
 import json
 import string
-import kubernetes.client
 from urllib.parse import urlparse, urlunparse
 
 from tornado import gen
@@ -15,7 +14,6 @@ from tornado.httpclient import HTTPError
 from traitlets import Type, Unicode, List, Integer, Union, Dict, Bool
 from jupyterhub.spawner import Spawner
 from jupyterhub.traitlets import Command
-from kubernetes.client import CoreV1Api
 from kubernetes.client.models.v1_volume import V1Volume
 from kubernetes.client.models.v1_volume_mount import V1VolumeMount
 
@@ -586,31 +584,33 @@ class KubeSpawner(Spawner):
         else:
             return src
 
-    def _get_hub_ip_from_service(
-        self,
-        namespaced_service, 
-        pretty=True,
-        exact=True,
-        export=True
-    ):
-        api_instance = CoreV1Api()
-        kubernetes.client.configuration.api_key['authorization'] = load_serviceaccount_token()
-        try: 
-            name = namespaced_service
-            namespace = 'default'
-            nssepcount = namespaced_service.count('.')
-            if nssepcount == 1:
-                name, namespace = namespaced_service.split('.')
-            elif nssepcount > 1:
-                name, namespace, _ = namespaced_service.split('.')
-            self.log.debug('Resolving service \"%s.%s\" IP' % (name, namespace))
-            apiservice = api_instance.read_namespaced_service(name, namespace, pretty=pretty, exact=exact, export=export)
-            if (apiservice.spec.load_balancer_ip):
-                return apiservice.status.load_balancer.ingress[0].ip
-            return apiservice.spec.cluster_ip
-        except Exception as e:
-            self.log.error("Exception when calling CoreV1Api->read_namespaced_service (%s): %s\n" % (namespaced_service, e))
-            raise e
+    @gen.coroutine
+    def get_hub_ip_from_service(self, namespaced_service):
+        name = namespaced_service
+        namespace = 'default'
+        nssepcount = namespaced_service.count('.')
+        if nssepcount == 1:
+            name, namespace = namespaced_service.split('.')
+        elif nssepcount > 1:
+            name, namespace, _ = namespaced_service.split('.')
+        self.log.debug('Resolving service \"%s.%s\" IP' % (name, namespace))
+            
+        try:
+            response = yield self.httpclient.fetch(self.request(
+                k8s_url(
+                    namespace,
+                    'services',
+                    name,
+                )
+            ))
+        except HTTPError as e:
+            if e.code == 404:
+                return None
+            raise
+        data = json.loads(response.body.decode('utf-8'))
+        if (data.spec.load_balancer_ip):
+            return data.status.load_balancer.ingress[0].ip
+        return data.spec.cluster_ip
 
     @gen.coroutine
     def get_pod_manifest(self):
