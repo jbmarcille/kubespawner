@@ -53,14 +53,6 @@ class KubeSpawner(Spawner):
                 port=self.hub_connect_port,
             )
             self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
-        elif self.hub_service_name and self.hub_service_port:
-            scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
-            hup_service_ip = self.get_hub_ip_from_service(self.hub_service_name)
-            netloc = '{ip}:{port}'.format(
-                ip=hup_service_ip,
-                port=self.hub_service_port,
-            )
-            self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
         else:
             self.accessible_hub_api_url = self.hub.api_url
 
@@ -585,18 +577,15 @@ class KubeSpawner(Spawner):
         else:
             return src
 
+    @gen.coroutine
     def get_hub_ip_from_service(self, namespaced_service):
         data = yield self.get_service_spec(namespaced_service)
         if data:
-            hub_service_ip = None
-            self.log.debug(json.dump(data,sort_keys=True,indent=2))
             try:
                 if (data['spec']['load_balancer_ip']):
-                    hub_service_ip = data['status']['load_balancer']['ingress'][0]['ip']
+                    return data['status']['load_balancer']['ingress'][0]['ip']
             except KeyError:
-                hub_service_ip = data['spec']['cluster_ip']
-            finally:
-                return hub_service_ip
+                return data['spec']['cluster_ip']
 
     @gen.coroutine
     def get_service_spec(self, namespaced_service):
@@ -796,6 +785,15 @@ class KubeSpawner(Spawner):
                 ))
             except:
                 self.log.info("PVC " + self.pvc_name + " already exists, so did not create new pvc.")
+
+        if self.hub_service_name and self.hub_service_port:
+            scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
+            hup_service_ip = yield self.get_hub_ip_from_service(self.hub_service_name)
+            netloc = '{ip}:{port}'.format(
+                ip=hup_service_ip,
+                port=self.hub_service_port,
+            )
+            self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
 
         # If we run into a 409 Conflict error, it means a pod with the
         # same name already exists. We stop it, wait for it to stop, and
