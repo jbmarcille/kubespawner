@@ -6,6 +6,10 @@ import yaml
 
 from tornado.httpclient import HTTPRequest
 
+def load_serviceaccount_token(tokenpath='/var/run/secrets/kubernetes.io/serviceaccount/token'):
+    with open(tokenpath) as f:
+        token = f.read()
+        return token
 
 def request_maker():
     """
@@ -26,8 +30,7 @@ def request_maker_serviceaccount():
     the kubernetes API from a ServiceAccount. This requires that service accounts are
     turned on in your kubernetes cluster and that the calling code is running in a pod.
     """
-    with open('/var/run/secrets/kubernetes.io/serviceaccount/token') as f:
-        token = f.read()
+    token = load_serviceaccount_token()
     api_url = 'https://{host}:{port}'.format(
         host=os.environ['KUBERNETES_SERVICE_HOST'],
         port=os.environ['KUBERNETES_SERVICE_PORT']
