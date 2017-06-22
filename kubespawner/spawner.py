@@ -18,7 +18,7 @@ from kubernetes.client.models.v1_volume import V1Volume
 from kubernetes.client.models.v1_volume_mount import V1VolumeMount
 
 from kubespawner.traitlets import Callable
-from kubespawner.utils import request_maker, k8s_url
+from kubespawner.utils import request_maker, k8s_url, load_serviceaccount_token
 from kubespawner.objects import make_pod_spec, make_pvc_spec, get_hub_ip_from_service
 
 
@@ -56,7 +56,7 @@ class KubeSpawner(Spawner):
         elif self.hub_service_name and self.hub_service_port:
             scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
             netloc = '{ip}:{port}'.format(
-                ip=get_hub_ip_from_service(self.hub_service_name),
+                ip=self._get_hub_ip_from_service(self.hub_service_name),
                 port=self.hub_service_port,
             )
             self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
@@ -583,6 +583,28 @@ class KubeSpawner(Spawner):
             return self._expand_user_properties(src)
         else:
             return src
+
+    def _get_hub_ip_from_service(
+        self,
+        namespaced_service, 
+        pretty=True,
+        exact=True,
+        export=True
+    ):
+        api_instance = CoreV1Api()
+        kubernetes.client.configuration.api_key['authorization'] = load_serviceaccount_token()
+        try: 
+            tmp = namespaced_service.split('.')
+            name = tmp[0]
+            namespace = tmp[1] if tmp[1] else 'default'
+            self.log.debug('Resolving service \"%s.%s\" IP' % (name, namespae))
+            apiservice = api_instance.read_namespaced_service(name, namespace, pretty=pretty, exact=exact, export=export)
+            if (apiservice.spec.load_balancer_ip):
+                return apiservice.status.load_balancer.ingress[0].ip
+            return apiservice.spec.cluster_ip
+        except Exception as e:
+            self.log.error("Exception when calling CoreV1Api->read_namespaced_service (%s): %s\n" % (namespaced_service, e))
+            raise e
 
     @gen.coroutine
     def get_pod_manifest(self):
