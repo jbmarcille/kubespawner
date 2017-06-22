@@ -7,6 +7,7 @@ implementation that should be used by JupyterHub.
 import os
 import json
 import string
+import kubernetes.client
 from urllib.parse import urlparse, urlunparse
 
 from tornado import gen
