@@ -603,7 +603,7 @@ class KubeSpawner(Spawner):
                 name, namespace = namespaced_service.split('.')
             elif nssepcount > 1:
                 name, namespace, _ = namespaced_service.split('.')
-            self.log.debug('Resolving service \"%s.%s\" IP' % (name, namespae))
+            self.log.debug('Resolving service \"%s.%s\" IP' % (name, namespace))
             apiservice = api_instance.read_namespaced_service(name, namespace, pretty=pretty, exact=exact, export=export)
             if (apiservice.spec.load_balancer_ip):
                 return apiservice.status.load_balancer.ingress[0].ip
