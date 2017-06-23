@@ -578,8 +578,8 @@ class KubeSpawner(Spawner):
             return src
 
     @gen.coroutine
-    def get_hub_ip_from_service(self, namespaced_service):
-        data = yield self.get_service_spec(namespaced_service)
+    def get_hub_ip_from_service(self, servicename):
+        data = yield self.get_service_spec(servicename)
         if data:
             try:
                 if (data['spec']['loadBalancerIP']):
@@ -588,21 +588,13 @@ class KubeSpawner(Spawner):
                 return data['spec']['clusterIP']
 
     @gen.coroutine
-    def get_service_spec(self, namespaced_service):
-        name = namespaced_service
-        namespace = 'default'
-        nssepcount = namespaced_service.count('.')
-        if nssepcount == 1:
-            name, namespace = namespaced_service.split('.')
-        elif nssepcount > 1:
-            name, namespace, _ = namespaced_service.split('.')
-
+    def get_service_spec(self, service):
         try:
             response = yield self.httpclient.fetch(self.request(
                 k8s_url(
-                    namespace,
+                    self.namespace,
                     'services',
-                    name,
+                    service,
                 )
             ))
         except HTTPError as e:
