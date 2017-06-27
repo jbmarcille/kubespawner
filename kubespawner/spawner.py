@@ -795,7 +795,7 @@ class KubeSpawner(Spawner):
                 ip=hup_service_ip,
                 port=self.hub_service_port,
             )
-            if path is None or path ='':
+            if path is None or path == '':
                 path = '/hub/api'
             self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
 
