@@ -806,7 +806,7 @@ class KubeSpawner(Spawner):
                 netloc = netloc.split(':')[0]
             
             self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
-            self.log.info('Hub service url: {huburl}'.format(uburl=self.accessible_hub_api_url))
+            self.log.info('Hub service url: {huburl}'.format(huburl=self.accessible_hub_api_url))
 
         # If we run into a 409 Conflict error, it means a pod with the
         # same name already exists. We stop it, wait for it to stop, and
