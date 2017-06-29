@@ -796,7 +796,14 @@ class KubeSpawner(Spawner):
                 port=self.hub_service_port,
             )
             if path is None or path == '':
-                path = '/hub/api'
+                path = '/{baseurl}/api'.format(baseurl=self.hub.server.base_url)
+
+            if self.hub_service_port == 80:
+                scheme = 'http'
+                netloc = netloc.split(':')[0]
+            elif self.hub_service_port == 443:
+                scheme = 'https'
+                netloc = netloc.split(':')[0]
             self.accessible_hub_api_url = urlunparse((scheme, netloc, path, params, query, fragment))
 
         # If we run into a 409 Conflict error, it means a pod with the
