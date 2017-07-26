@@ -6,10 +6,10 @@ import yaml
 
 from tornado.httpclient import HTTPRequest
 
-def load_serviceaccount_token(tokenpath='/var/run/secrets/kubernetes.io/serviceaccount/token'):
-    with open(tokenpath) as f:
-        token = f.read()
-        return token
+#def load_serviceaccount_token(tokenpath='/var/run/secrets/kubernetes.io/serviceaccount/token'):
+#    with open(tokenpath) as f:
+#        token = f.read()
+#        return token
 
 def request_maker():
     """

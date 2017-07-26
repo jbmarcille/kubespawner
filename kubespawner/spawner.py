@@ -6,21 +6,39 @@ implementation that should be used by JupyterHub.
 """
 import os
 import json
+import time
 import string
+import threading
+import sys
 from urllib.parse import urlparse, urlunparse
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
 from tornado import gen
-from tornado.httpclient import HTTPError
-from traitlets import Type, Unicode, List, Integer, Union, Dict, Bool
+from tornado.concurrent import run_on_executor
+from traitlets.config import SingletonConfigurable
+from traitlets import Type, Unicode, List, Integer, Union, Dict, Bool, Any
 from jupyterhub.spawner import Spawner
 from jupyterhub.traitlets import Command
 from kubernetes.client.models.v1_volume import V1Volume
 from kubernetes.client.models.v1_volume_mount import V1VolumeMount
+from kubernetes.client.rest import ApiException
+from kubernetes import client
+import escapism
 
 from kubespawner.traitlets import Callable
-from kubespawner.utils import request_maker, k8s_url, load_serviceaccount_token
-from kubespawner.objects import make_pod_spec, make_pvc_spec
+from kubespawner.utils import request_maker, k8s_url
+from kubespawner.objects import make_pod, make_pvc
+from kubespawner.reflector import PodReflector
 
+class SingletonExecutor(SingletonConfigurable, ThreadPoolExecutor):
+    """
+    Simple wrapper to ThreadPoolExecutor that is also a singleton.
+
+    We want one ThreadPool that is used by all the spawners, rather
+    than one ThreadPool per spawner!
+    """
+    pass
 
 class KubeSpawner(Spawner):
     """
@@ -30,19 +48,13 @@ class KubeSpawner(Spawner):
         super().__init__(*args, **kwargs)
         # By now, all the traitlets have been set, so we can use them to compute
         # other attributes
-        # If httpclient_class trailet is set use it
-        if self.httpclient_class:
-            self.httpclient = self.httpclient_class(max_clients=64)
-        else:
-            # No httpclient_class trailet: Use Curl HTTPClient if available, else fall back to Simple
-            try:
-                from tornado.curl_httpclient import CurlAsyncHTTPClient
-                self.httpclient = CurlAsyncHTTPClient(max_clients=64)
-            except ImportError:
-                from tornado.simple_httpclient import SimpleAsyncHTTPClient
-                self.httpclient = SimpleAsyncHTTPClient(max_clients=64)
-        # FIXME: Support more than just kubeconfig
-        self.request = request_maker()
+        self.executor = SingletonExecutor.instance(max_workers=self.k8s_api_threadpool_workers)
+
+        # This will start watching in __init__, so it'll start the first
+        # time any spawner object is created. Not ideal but works!
+        self.pod_reflector = PodReflector.instance(parent=self, namespace=self.namespace)
+        self.api = client.CoreV1Api()
+
         self.pod_name = self._expand_user_properties(self.pod_name_template)
         self.pvc_name = self._expand_user_properties(self.pvc_name_template)
         self.singleuser_notebook_dir = self._expand_user_properties(self.singleuser_notebook_dir)
@@ -59,6 +71,20 @@ class KubeSpawner(Spawner):
         if self.port == 0:
             # Our default port is 8888
             self.port = 8888
+
+    k8s_api_threadpool_workers = Integer(
+        # Set this explicitly, since this is the default in Python 3.5+
+        # but not in 3.4
+        5 * multiprocessing.cpu_count(),
+        config=True,
+        help="""
+        Number of threads in thread pool used to talk to the k8s API.
+
+        Increase this if you are dealing with a very large number of users.
+
+        Defaults to '5 * cpu_cores', which is the default for ThreadPoolExecutor.
+        """
+    )
 
     namespace = Unicode(
         config=True,
@@ -122,7 +148,7 @@ class KubeSpawner(Spawner):
     ).tag(config=True)
 
     pod_name_template = Unicode(
-        'jupyter-{username}-{userid}',
+        'jupyter-{username}',
         config=True,
         help="""
         Template to use to form the name of user's pods.
@@ -148,7 +174,7 @@ class KubeSpawner(Spawner):
     )
 
     pvc_name_template = Unicode(
-        'claim-{username}-{userid}',
+        'claim-{username}',
         config=True,
         help="""
         Template to use to form the name of user's pvc.
@@ -246,6 +272,9 @@ class KubeSpawner(Spawner):
 
         See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/ for more
         info on what labels are and why you might want to use them!
+
+        {username} and {userid} are expanded to the escaped, dns-label safe
+        username & integer user id respectively, wherever they are used.
         """
     )
 
@@ -322,6 +351,14 @@ class KubeSpawner(Spawner):
 
         For example to match the Nodes that have a label of `disktype: ssd` use:
             `{"disktype": "ssd"}`
+        """
+    )
+
+    singleuser_env_vars = Dict(
+        {},
+        config=False,
+        help="""
+        This dictionary contains additional environment variables to be passed to the signleuser container.
         """
     )
 
@@ -467,6 +504,24 @@ class KubeSpawner(Spawner):
         """
     )
 
+    user_storage_extra_labels = Dict(
+        {},
+        config=True,
+        help="""
+        Extra kubernetes labels to set on the user PVCs.
+
+        The keys and values specified here would be set as labels on the PVCs
+        created by kubespawner for the user. Note that these are only set
+        when the PVC is created, not later when they are updated.
+
+        See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/ for more
+        info on what labels are and why you might want to use them!
+
+        {username} and {userid} are expanded to the escaped, dns-label safe
+        username & integer user id respectively, wherever they are used.
+        """
+    )
+
     user_storage_class = Unicode(
         None,
         config=True,
@@ -557,25 +612,15 @@ class KubeSpawner(Spawner):
         """
     )
 
-    httpclient_class = Type(
-        None,
-        config=True,
-        allow_none=True,
-        help="""
-        Python class to use as an httpclient
-
-        It could be for example: `tornado.curl_httpclient.CurlAsyncHTTPClient` or
-        `tornado.simple_httpclient.SimpleAsyncHTTPClient`.
-        """
-    )
-
     def _expand_user_properties(self, template):
         # Make sure username matches the restrictions for DNS labels
         safe_chars = set(string.ascii_lowercase + string.digits)
-        safe_username = ''.join([s if s in safe_chars else '-' for s in self.user.name.lower()])
+        legacy_escaped_username = ''.join([s if s in safe_chars else '-' for s in self.user.name.lower()])
+        safe_username = escapism.escape(self.user.name, safe=safe_chars, escape_char='-').lower()
         return template.format(
             userid=self.user.id,
-            username=safe_username
+            username=safe_username,
+            legacy_escape_username=legacy_escaped_username
         )
 
     def _expand_all(self, src):
@@ -588,31 +633,55 @@ class KubeSpawner(Spawner):
         else:
             return src
 
+    @default('options_form')
+    def _options_form_default(self):
+        return """
+        <label for="dockerimage">Enter custom Jupyter Docker Image</label>
+        <input name="dockerimage" type="text" placeholder="registry.airmes.sparkindata.com/airmes/jupyter-singleuser:1.1.0"></input>
+        <label for="dockerenv">Environment variables (one per line)</label>
+        <textarea name="dockerenv"></textarea>
+        """
+
+    def options_from_form(self, formdata):
+        image = formdata.get('dockerimage', None)
+        if image: 
+            self.singleuser_image_spec = image
+
+        env_vars = formdata.get('dockerenv', [''])
+        for var in env_vars[0].splitlines():
+            if line:
+                k, v = line.split('=', 1)
+                self.singleuser_env_vars[k.strip()] = v.strip()
+
+    @run_on_executor
+    def asynchronize(self, method, *args, **kwargs):
+        return method(*args, **kwargs)
+
     @gen.coroutine
     def get_hub_ip_from_service(self, servicename):
         data = yield self.get_service_spec(servicename)
         if data:
             try:
-                if (data['spec']['loadBalancerIP']):
-                    return data['status']['loadBalancer']['ingress'][0]['IP']
+                #if (data['spec']['loadBalancerIP']):
+                #    return data['status']['loadBalancer']['ingress'][0]['IP']
+                if data.spec.load_balancer_ip:
+                    return data.status.load_balancer.ingress[0].ip
             except KeyError:
-                return data['spec']['clusterIP']
+                #return data['spec']['clusterIP']
+                return data.spec.cluster_ip
 
     @gen.coroutine
     def get_service_spec(self, service):
         try:
-            response = yield self.httpclient.fetch(self.request(
-                k8s_url(
-                    self.namespace,
-                    'services',
-                    service,
-                )
-            ))
-        except HTTPError as e:
-            if e.code == 404:
-                return None
+            yield self.asynchronize(
+                self.api.read_namespaced_service,
+                name=self.hub_service_name,
+                namespace=self.namespace,
+                exact=true,
+                export=false
+            )
+        except ApiException as e:
             raise
-        return json.loads(response.body.decode('utf-8'))
 
     @gen.coroutine
     def get_pod_manifest(self):
@@ -647,7 +716,18 @@ class KubeSpawner(Spawner):
         hack_volume_mount.mount_path = "/var/run/secrets/kubernetes.io/serviceaccount"
         hack_volume_mount.read_only = True
 
-        return make_pod_spec(
+        # Default set of labels, picked up from
+        # https://github.com/kubernetes/helm/blob/master/docs/chart_best_practices/labels.md
+        labels = {
+            'heritage': 'jupyterhub',
+            'component': 'singleuser-server',
+            'app': 'jupyterhub',
+            'hub.jupyter.org/username': escapism.escape(self.user.name)
+        }
+
+        labels.update(self._expand_all(self.singleuser_extra_labels))
+
+        return make_pod(
             name=self.pod_name,
             image_spec=self.singleuser_image_spec,
             image_pull_policy=self.singleuser_image_pull_policy,
@@ -661,7 +741,7 @@ class KubeSpawner(Spawner):
             volumes=self._expand_all(self.volumes) + [hack_volume],
             volume_mounts=self._expand_all(self.volume_mounts) + [hack_volume_mount],
             working_dir=self.singleuser_working_dir,
-            labels=self.singleuser_extra_labels,
+            labels=labels,
             cpu_limit=self.cpu_limit,
             cpu_guarantee=self.cpu_guarantee,
             mem_limit=self.mem_limit,
@@ -674,56 +754,22 @@ class KubeSpawner(Spawner):
         """
         Make a pvc manifest that will spawn current user's pvc.
         """
-        return make_pvc_spec(
+        # Default set of labels, picked up from
+        # https://github.com/kubernetes/helm/blob/master/docs/chart_best_practices/labels.md
+        labels = {
+            'heritage': 'jupyterhub',
+            'app': 'jupyterhub',
+            'hub.jupyter.org/username': escapism.escape(self.user.name)
+        }
+
+        labels.update(self._expand_all(self.user_storage_extra_labels))
+        return make_pvc(
             name=self.pvc_name,
             storage_class=self.user_storage_class,
             access_modes=self.user_storage_access_modes,
-            storage=self.user_storage_capacity
+            storage=self.user_storage_capacity,
+            labels=labels
         )
-
-    @gen.coroutine
-    def get_pod_info(self, pod_name):
-        """
-        Fetch info about a specific pod with the given pod name in current namespace
-
-        Return `None` if pod with given name does not exist in current namespace
-        """
-        try:
-            response = yield self.httpclient.fetch(self.request(
-                k8s_url(
-                    self.namespace,
-                    'pods',
-                    pod_name,
-                )
-            ))
-        except HTTPError as e:
-            if e.code == 404:
-                return None
-            raise
-        data = response.body.decode('utf-8')
-        return json.loads(data)
-
-    @gen.coroutine
-    def get_pvc_info(self, pvc_name):
-        """
-        Fetch info about a specific pvc with the given pvc name in current namespace
-
-        Return `None` if pvc with given name does not exist in current namespace
-        """
-        try:
-            response = yield self.httpclient.fetch(self.request(
-                k8s_url(
-                    self.namespace,
-                    'persistentvolumeclaims',
-                    pvc_name,
-                )
-            ))
-        except HTTPError as e:
-            if e.code == 404:
-                return None
-            raise
-        data = response.body.decode('utf-8')
-        return json.loads(data)
 
     def is_pod_running(self, pod):
         """
@@ -731,7 +777,12 @@ class KubeSpawner(Spawner):
 
         pod must be a dictionary representing a Pod kubernetes API object.
         """
-        return pod['status']['phase'] == 'Running'
+        # FIXME: Validate if this is really the best way
+        is_running = pod.status.phase == 'Running' and \
+                     pod.status.pod_ip is not None and \
+                     pod.metadata.deletion_timestamp is None and \
+                     all([cs.ready for cs in pod.status.container_statuses])
+        return is_running
 
     def get_state(self):
         """
@@ -769,24 +820,27 @@ class KubeSpawner(Spawner):
         Returns None if it is, and 1 if it isn't. These are the return values
         JupyterHub expects.
         """
-        data = yield self.get_pod_info(self.pod_name)
+        data = self.pod_reflector.pods.get(self.pod_name, None)
         if data is not None and self.is_pod_running(data):
             return None
+
         return 1
 
     @gen.coroutine
     def start(self):
         if self.user_storage_pvc_ensure:
-            pvc_manifest = self.get_pvc_manifest()
+            pvc = self.get_pvc_manifest()
             try:
-                yield self.httpclient.fetch(self.request(
-                    url=k8s_url(self.namespace, 'persistentvolumeclaims'),
-                    body=json.dumps(pvc_manifest),
-                    method='POST',
-                    headers={'Content-Type': 'application/json'}
-                ))
-            except:
-                self.log.info("PVC " + self.pvc_name + " already exists, so did not create new pvc.")
+                yield self.asynchronize(
+                    self.api.create_namespaced_persistent_volume_claim,
+                    namespace=self.namespace,
+                    body=pvc
+                )
+            except ApiException as e:
+                if e.status == 409:
+                    self.log.info("PVC " + self.pvc_name + " already exists, so did not create new pvc.")
+                else:
+                    raise
 
         if self.hub_service_name and self.hub_service_port:
             scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
@@ -813,20 +867,19 @@ class KubeSpawner(Spawner):
         # try again. We try 4 times, and if it still fails we give up.
         # FIXME: Have better / cleaner retry logic!
         retry_times = 4
-        pod_manifest = yield self.get_pod_manifest()
+        pod = yield self.get_pod_manifest()
         for i in range(retry_times):
             try:
-                yield self.httpclient.fetch(self.request(
-                    url=k8s_url(self.namespace, 'pods'),
-                    body=json.dumps(pod_manifest),
-                    method='POST',
-                    headers={'Content-Type': 'application/json'}
-                ))
+                yield self.asynchronize(
+                    self.api.create_namespaced_pod,
+                    self.namespace,
+                    pod
+                )
                 break
-            except HTTPError as e:
-                if e.code != 409:
+            except ApiException as e:
+                if e.status != 409:
                     # We only want to handle 409 conflict errors
-                    self.log.exception("Failed for %s", json.dumps(pod_manifest))
+                    self.log.exception("Failed for %s", pod.to_str())
                     raise
                 self.log.info('Found existing pod %s, attempting to kill', self.pod_name)
                 yield self.stop(True)
@@ -837,34 +890,33 @@ class KubeSpawner(Spawner):
                 'Can not create user pod %s already exists & could not be deleted' % self.pod_name)
 
         while True:
-            data = yield self.get_pod_info(self.pod_name)
-            if data is not None and self.is_pod_running(data):
+            pod = self.pod_reflector.pods.get(self.pod_name, None)
+            if pod is not None and self.is_pod_running(pod):
                 break
             yield gen.sleep(1)
-        return (data['status']['podIP'], self.port)
+        return (pod.status.pod_ip, self.port)
 
     @gen.coroutine
     def stop(self, now=False):
-        body = {
-            'kind': 'DeleteOptions',
-            'apiVersion': 'v1',
-        }
+        delete_options = client.V1DeleteOptions()
+
         if now:
-            # Don't give it any time to gracefully stop
-            body['gracePeriodSeconds'] = 0
-        yield self.httpclient.fetch(
-            self.request(
-                url=k8s_url(self.namespace, 'pods', self.pod_name),
-                method='DELETE',
-                body=json.dumps(body),
-                headers={'Content-Type': 'application/json'},
-                # Tornado's client thinks DELETE requests shouldn't have a body
-                # which is a bogus restriction
-                allow_nonstandard_methods=True,
-            )
+            grace_seconds = 0
+        else:
+            # Give it some time, but not the default (which is 30s!)
+            # FIXME: Move this into pod creation maybe?
+            grace_seconds = 1
+
+        delete_options.grace_period_seconds = grace_seconds
+        yield self.asynchronize(
+            self.api.delete_namespaced_pod,
+            name=self.pod_name,
+            namespace=self.namespace,
+            body=delete_options,
+            grace_period_seconds=grace_seconds
         )
         while True:
-            data = yield self.get_pod_info(self.pod_name)
+            data = self.pod_reflector.pods.get(self.pod_name, None)
             if data is None:
                 break
             yield gen.sleep(1)
@@ -899,4 +951,5 @@ class KubeSpawner(Spawner):
             'JPY_HUB_API_URL': self.accessible_hub_api_url,
             'NOTEBOOK_DIR' : self.singleuser_notebook_dir
         })
+        env.update(self.singleuser_env_vars)
         return env
