@@ -633,7 +633,6 @@ class KubeSpawner(Spawner):
         else:
             return src
 
-    @default('options_form')
     def _options_form_default(self):
         return """
         <label for="dockerimage">Enter custom Jupyter Docker Image</label>
