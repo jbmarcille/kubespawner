@@ -659,28 +659,37 @@ class KubeSpawner(Spawner):
     def asynchronize(self, method, *args, **kwargs):
         return method(*args, **kwargs)
 
-    @gen.coroutine
-    def get_hub_ip_from_service(self, servicename):
-        data = yield self.get_service_spec(servicename)
-        if data:
-            for portSpec in data.spec.ports:
-                if portSpec.port == 443:
-                    return (data.spec.cluster_ip, portSpec.port)
-                elif portSpec.port == 80:
-                    return (data.spec.cluster_ip, portSpec.port)
-        else:
-            raise ValueError('No service with name {0} found'.format(servicename))
+    #@gen.coroutine
+    #def get_hub_ip_from_service(self, servicename):
+    #    data = yield self.get_service_spec(servicename)
+    #    if data:
+    #        for portSpec in data.spec.ports:
+    #            if portSpec.port == 443:
+    #                return (data.spec.cluster_ip, portSpec.port)
+    #            elif portSpec.port == 80:
+    #                return (data.spec.cluster_ip, portSpec.port)
+    #    else:
+    #        raise ValueError('No service with name {0} found'.format(servicename))
 
     @gen.coroutine
-    def get_service_spec(self, service):
+    def get_hub_ip_from_service(self, service):
         try:
-            return yield self.asynchronize(
+            data = yield self.asynchronize(
                 self.api.read_namespaced_service,
-                name=self.hub_service_name,
+                name=service,
                 namespace=self.namespace,
                 exact=True,
                 export=False
             )
+
+            if data:
+                for portSpec in data.spec.ports:
+                    if portSpec.port == 443:
+                        return (data.spec.cluster_ip, portSpec.port)
+                    elif portSpec.port == 80:
+                        return (data.spec.cluster_ip, portSpec.port)
+            else:
+                raise ValueError('No service with name {0} found'.format(service))
         except ApiException as e:
             raise
 
