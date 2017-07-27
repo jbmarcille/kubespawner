@@ -662,7 +662,7 @@ class KubeSpawner(Spawner):
     @gen.coroutine
     def get_hub_ip_from_service(self, servicename):
         data = yield self.get_service_spec(servicename)
-        if data and not data.spec.load_balancer_ip:
+        if data and data.spec.cluster_ip:
             for portSpec in data.spec.ports:
                 if portSpec.port == 443:
                     return (data.spec.cluster_ip, portSpec.port)
