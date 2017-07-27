@@ -645,7 +645,7 @@ class KubeSpawner(Spawner):
         """
 
     def options_from_form(self, formdata):
-        image = formdata.get('dockerimage', ['jupyterhub/singleuser:latest'])[0]
+        image = formdata.get('dockerimage', ['registry.airmes.sparkindata.com/airmes/jupyter-singleuser:1.1.0'])[0]
         if image: 
             self.singleuser_image_spec = image.strip()
 
