@@ -55,6 +55,7 @@ class KubeSpawner(Spawner):
         # time any spawner object is created. Not ideal but works!
         configuration = Configuration()
         configuration.verify_ssl = False
+        configuration.debug=True
         self.pod_reflector = PodReflector.instance(parent=self, namespace=self.namespace)
         self.api = client.CoreV1Api()
 
@@ -237,19 +238,6 @@ class KubeSpawner(Spawner):
         IP/DNS hostname to be used by pods to reach out to the hub API.
         Defaults to `None`, in which case an error is raised.
         Used together with `hub_service_port` configuration.
-        """
-    )
-
-    hub_service_port = Integer(
-        80,
-        config=True,
-        help="""
-        Port to use by pods to reach out to the hub API.
-
-        Defaults to port 80.
-
-        This should be set to the `port` attribute of a service that is
-        fronting the hub pod.
         """
     )
 
@@ -878,8 +866,6 @@ class KubeSpawner(Spawner):
         # FIXME: Have better / cleaner retry logic!
         retry_times = 4
         pod = yield self.get_pod_manifest()
-        self.log.info('SingleUser POD spec:')
-        self.log.info(pod.to_str())
         for i in range(retry_times):
             try:
                 yield self.asynchronize(
