@@ -45,6 +45,7 @@ class PodReflector(SingletonConfigurable):
         # so this __init__ will be run way before anything else gets run.
         configuration = Configuration()
         configuration.verify_ssl = False
+        configuration.debug=True
         try:
             config.load_incluster_config()
         except config.ConfigException:
