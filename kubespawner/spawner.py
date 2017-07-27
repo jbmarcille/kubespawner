@@ -878,6 +878,8 @@ class KubeSpawner(Spawner):
         # FIXME: Have better / cleaner retry logic!
         retry_times = 4
         pod = yield self.get_pod_manifest()
+        self.log.info('SingleUser POD spec:')
+        self.log.info(pod.to_str())
         for i in range(retry_times):
             try:
                 yield self.asynchronize(
