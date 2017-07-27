@@ -23,6 +23,7 @@ from jupyterhub.traitlets import Command
 from kubernetes.client.models.v1_volume import V1Volume
 from kubernetes.client.models.v1_volume_mount import V1VolumeMount
 from kubernetes.client.rest import ApiException
+from kubernetes.client.configuration import Configuration
 from kubernetes import client
 import escapism
 
@@ -52,6 +53,8 @@ class KubeSpawner(Spawner):
 
         # This will start watching in __init__, so it'll start the first
         # time any spawner object is created. Not ideal but works!
+        configuration = Configuration()
+        configuration.verify_ssl = False
         self.pod_reflector = PodReflector.instance(parent=self, namespace=self.namespace)
         self.api = client.CoreV1Api()
 

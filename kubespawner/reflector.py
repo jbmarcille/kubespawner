@@ -4,6 +4,7 @@ import threading
 from traitlets.config import SingletonConfigurable
 from traitlets import Dict, Unicode
 from kubernetes import client, config, watch
+from kubernetes.client.configuration import Configuration
 
 
 class PodReflector(SingletonConfigurable):
@@ -42,6 +43,8 @@ class PodReflector(SingletonConfigurable):
         super().__init__(*args, **kwargs)
         # Load kubernetes config here, since this is a Singleton and
         # so this __init__ will be run way before anything else gets run.
+        configuration = Configuration()
+        configuration.verify_ssl = False
         try:
             config.load_incluster_config()
         except config.ConfigException:
