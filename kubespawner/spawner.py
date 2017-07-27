@@ -674,7 +674,7 @@ class KubeSpawner(Spawner):
     @gen.coroutine
     def get_service_spec(self, service):
         try:
-            yield self.asynchronize(
+            return yield self.asynchronize(
                 self.api.read_namespaced_service,
                 name=self.hub_service_name,
                 namespace=self.namespace,
