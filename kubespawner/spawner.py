@@ -662,15 +662,14 @@ class KubeSpawner(Spawner):
     @gen.coroutine
     def get_hub_ip_from_service(self, servicename):
         data = yield self.get_service_spec(servicename)
-        if data:
-            try:
-                #if (data['spec']['loadBalancerIP']):
-                #    return data['status']['loadBalancer']['ingress'][0]['IP']
-                if data.spec.load_balancer_ip:
-                    return data.status.load_balancer.ingress[0].ip
-            except KeyError:
-                #return data['spec']['clusterIP']
-                return data.spec.cluster_ip
+        if data and not data.spec.load_balancer_ip:
+            for portSpec in data.spec.ports:
+                if portSpec.port == 443:
+                    return (data.spec.cluster_ip, portSpec.port)
+                elif portSpec.port == 80:
+                    return (data.spec.cluster_ip, portSpec.port)
+        else:
+            raise ValueError('No service with name {0} found'.format(servicename))
 
     @gen.coroutine
     def get_service_spec(self, service):
@@ -844,20 +843,20 @@ class KubeSpawner(Spawner):
                 else:
                     raise
 
-        if self.hub_service_name and self.hub_service_port:
+        if self.hub_service_name:
             scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
-            hup_service_ip = yield self.get_hub_ip_from_service(self.hub_service_name)
+            hup_service_ip, hub_service_port = yield self.get_hub_ip_from_service(self.hub_service_name)
             netloc = '{ip}:{port}'.format(
                 ip=hup_service_ip,
-                port=self.hub_service_port,
+                port=hub_service_port,
             )
             if path is None or path == '':
                 path = '/{baseurl}/api'.format(baseurl=self.hub.server.base_url)
 
-            if self.hub_service_port == 80:
+            if hub_service_port == 80:
                 scheme = 'http'
                 netloc = netloc.split(':')[0]
-            elif self.hub_service_port == 443:
+            elif hub_service_port == 443:
                 scheme = 'https'
                 netloc = netloc.split(':')[0]
             
