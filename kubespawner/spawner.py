@@ -679,8 +679,8 @@ class KubeSpawner(Spawner):
                 self.api.read_namespaced_service,
                 name=self.hub_service_name,
                 namespace=self.namespace,
-                exact=true,
-                export=false
+                exact=True,
+                export=False
             )
         except ApiException as e:
             raise
