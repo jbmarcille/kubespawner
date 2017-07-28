@@ -606,7 +606,7 @@ class KubeSpawner(Spawner):
     def get_hub_ip_from_service(self, servicename):
         data = yield self.get_service_spec(servicename)
         try:
-            ip = data['spec']['clusterIp']
+            ip = data['spec']['clusterIP']
             port = None
             for portSpec in data['spec']['ports']:
                 if portSpec['port'] == 443:
