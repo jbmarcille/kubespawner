@@ -606,13 +606,12 @@ class KubeSpawner(Spawner):
     def get_hub_ip_from_service(self, servicename):
         data = yield self.get_service_spec(servicename)
         try:
-            self.log.info(data)
             ip = data['spec']['clusterIP']
             port = None
             for portSpec in data['spec']['ports']:
                 if portSpec['port'] == 443:
                     return (ip, portSpec['port'])
-                elif portSpec.port == 80:
+                elif portSpec['port'] == 80:
                     port = portSpec['port']
             if None not in (ip, port):
                 return (ip, port)
