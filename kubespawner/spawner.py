@@ -336,6 +336,14 @@ class KubeSpawner(Spawner):
         """
     )
 
+    singleuser_env_vars = Dict(
+        {},
+        config=False,
+        help="""
+        This dictionary contains additional environment variables to be passed to the signleuser container.
+        """
+    )
+
     singleuser_uid = Union([
             Integer(),
             Callable()
@@ -587,6 +595,25 @@ class KubeSpawner(Spawner):
             return self._expand_user_properties(src)
         else:
             return src
+
+    def _options_form_default(self):
+        return """
+        <label for="dockerimage">Enter custom Jupyter Docker Image</label>
+        <input name="dockerimage" type="text" placeholder="registry.airmes.sparkindata.com/airmes/jupyter-singleuser:1.1.0"></input>
+        <label for="dockerenv">Environment variables (one per line)</label>
+        <textarea name="dockerenv"></textarea>
+        """
+
+    def options_from_form(self, formdata):
+        image = formdata.get('dockerimage', ['registry.airmes.sparkindata.com/airmes/jupyter-singleuser:1.1.0'])[0]
+        if image: 
+            self.singleuser_image_spec = image.strip()
+
+        env_vars = formdata.get('dockerenv', [''])
+        for var in env_vars[0].splitlines():
+            if line:
+                k, v = line.split('=', 1)
+                self.singleuser_env_vars[k.strip()] = v.strip()
 
     @gen.coroutine
     def get_hub_ip_from_service(self, servicename):
@@ -899,4 +926,5 @@ class KubeSpawner(Spawner):
             'JPY_HUB_API_URL': self.accessible_hub_api_url,
             'NOTEBOOK_DIR' : self.singleuser_notebook_dir
         })
+        env.update(self.singleuser_env_vars)
         return env
