@@ -211,19 +211,6 @@ class KubeSpawner(Spawner):
         """
     )
 
-    hub_service_port = Integer(
-        80,
-        config=True,
-        help="""
-        Port to use by pods to reach out to the hub API.
-
-        Defaults to port 80.
-
-        This should be set to the `port` attribute of a service that is
-        fronting the hub pod.
-        """
-    )
-
     def _hub_connect_port_default(self):
         """
         Set default port on which pods connect to hub to be the hub port
@@ -618,12 +605,20 @@ class KubeSpawner(Spawner):
     @gen.coroutine
     def get_hub_ip_from_service(self, servicename):
         data = yield self.get_service_spec(servicename)
-        if data:
-            try:
-                if (data['spec']['loadBalancerIP']):
-                    return data['status']['loadBalancer']['ingress'][0]['IP']
-            except KeyError:
-                return data['spec']['clusterIP']
+        try:
+            ip = data['spec']['clusterIp']
+            port = None
+            for portSpec in data['spec']['ports']:
+                if portSpec['port'] == 443:
+                    return (ip, portSpec['port'])
+                elif portSpec.port == 80:
+                    port = portSpec['port']
+            if None not in (ip, port):
+                return (ip, port)
+            else:
+                raise ValueError("No service with name: {0} found".format(servicename))
+        except KeyError:
+            raise
 
     @gen.coroutine
     def get_service_spec(self, service):
@@ -815,20 +810,20 @@ class KubeSpawner(Spawner):
             except:
                 self.log.info("PVC " + self.pvc_name + " already exists, so did not create new pvc.")
 
-        if self.hub_service_name and self.hub_service_port:
+        if self.hub_service_name:
             scheme, netloc, path, params, query, fragment = urlparse(self.hub.api_url)
-            hup_service_ip = yield self.get_hub_ip_from_service(self.hub_service_name)
+            hup_service_ip, hub_service_port = yield self.get_hub_ip_from_service(self.hub_service_name)
             netloc = '{ip}:{port}'.format(
                 ip=hup_service_ip,
-                port=self.hub_service_port,
+                port=hub_service_port,
             )
             if path is None or path == '':
                 path = '/{baseurl}/api'.format(baseurl=self.hub.server.base_url)
 
-            if self.hub_service_port == 80:
+            if hub_service_port == 80:
                 scheme = 'http'
                 netloc = netloc.split(':')[0]
-            elif self.hub_service_port == 443:
+            elif hub_service_port == 443:
                 scheme = 'https'
                 netloc = netloc.split(':')[0]
             
