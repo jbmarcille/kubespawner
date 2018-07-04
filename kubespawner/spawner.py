@@ -746,6 +746,8 @@ class KubeSpawner(Spawner):
             mem_guarantee=self.mem_guarantee,
             lifecycle_hooks=self.singleuser_lifecycle_hooks,
             init_containers=self.singleuser_init_containers,
+            is_privileged=False,
+            has_capabilities=['SYS_ADMIN', 'MKNOD']
         )
 
     def get_pvc_manifest(self):

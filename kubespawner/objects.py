@@ -4,14 +4,14 @@ Helper methods for generating k8s API objects.
 from kubernetes.client.models.v1_pod import V1Pod
 from kubernetes.client.models.v1_pod_spec import V1PodSpec
 from kubernetes.client.models.v1_object_meta import V1ObjectMeta
+from kubernetes.client.models.v1_security_context import V1SecurityContext
 from kubernetes.client.models.v1_pod_security_context import V1PodSecurityContext
 from kubernetes.client.models.v1_local_object_reference import V1LocalObjectReference
-
+from kubernetes.client.models.v1_capabilities import V1Capabilities
 from kubernetes.client.models.v1_container import V1Container
 from kubernetes.client.models.v1_container_port import V1ContainerPort
 from kubernetes.client.models.v1_env_var import V1EnvVar
 from kubernetes.client.models.v1_resource_requirements import V1ResourceRequirements
-
 from kubernetes.client.models.v1_persistent_volume_claim import V1PersistentVolumeClaim
 from kubernetes.client.models.v1_persistent_volume_claim_spec import V1PersistentVolumeClaimSpec
 
@@ -36,6 +36,8 @@ def make_pod(
     mem_guarantee,
     lifecycle_hooks,
     init_containers,
+    is_privileged=False,
+    has_capabilities=None
 ):
     """
     Make a k8s pod specification for running a user notebook.
@@ -112,12 +114,12 @@ def make_pod(
 
     pod.spec = V1PodSpec()
 
-    security_context = V1PodSecurityContext()
+    pod_security_context = V1PodSecurityContext()
     if fs_gid is not None:
-        security_context.fs_group = int(fs_gid)
+        pod_security_context.fs_group = int(fs_gid)
     if run_as_uid is not None:
-        security_context.run_as_user = int(run_as_uid)
-    pod.spec.security_context = security_context
+        pod_security_context.run_as_user = int(run_as_uid)
+    pod.spec.security_context = pod_security_context
 
     if image_pull_secret is not None:
         pod.spec.image_pull_secrets = []
@@ -143,6 +145,13 @@ def make_pod(
     notebook_container.image_pull_policy = image_pull_policy
     notebook_container.lifecycle = lifecycle_hooks
     notebook_container.resources = V1ResourceRequirements()
+
+    if is_privileged or has_capabilities:
+        security_context = V1SecurityContext()
+        security_context.privileged = is_privileged
+        if has_capabilities and len(has_capabilities) > 0:
+            security_context.capabilities = list(has_capabilities)
+        notebook_container.security_context = security_context
 
     notebook_container.resources.requests = {}
 
