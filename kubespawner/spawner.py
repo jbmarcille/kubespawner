@@ -422,6 +422,22 @@ class KubeSpawner(Spawner):
         """
     )
 
+    is_privileged = Bool(
+        False,
+        config=True,
+        help="""
+        Run POD with privileged rights.
+        """
+    )
+
+    has_capabilities = List(
+        [],
+        config=True,
+        help="""
+        Add specified capabilities to POD.
+        """
+    )
+
     volumes = List(
         [],
         config=True,
@@ -746,8 +762,8 @@ class KubeSpawner(Spawner):
             mem_guarantee=self.mem_guarantee,
             lifecycle_hooks=self.singleuser_lifecycle_hooks,
             init_containers=self.singleuser_init_containers,
-            is_privileged=False,
-            has_capabilities=['SYS_ADMIN', 'MKNOD']
+            is_privileged=self.is_privileged,
+            has_capabilities=self.has_capabilities
         )
 
     def get_pvc_manifest(self):
