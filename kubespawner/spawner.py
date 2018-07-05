@@ -627,7 +627,7 @@ class KubeSpawner(Spawner):
     def _options_form_default(self):
         return """
         <label for="dockerimage">Enter custom Jupyter Docker Image</label>
-        <input name="dockerimage" type="text" placeholder="registry.airmes.sparkindata.com/airmes/jupyter-singleuser:1.1.0"></input>
+        <input name="dockerimage" type="text" placeholder="registry.airmes.sparkindata.com/airmes/jupyter-singleuser:1.1.1"></input>
         <label for="dockerenv">Environment variables (one per line)</label>
         <textarea name="dockerenv"></textarea>
         """
