@@ -654,7 +654,7 @@ class KubeSpawner(Spawner):
             self.singleuser_image_spec = image.strip()
 
         env_vars = formdata.get('dockerenv', [''])
-        for var in env_vars[0].splitlines():
+        for line in env_vars[0].splitlines():
             if line:
                 k, v = line.split('=', 1)
                 self.singleuser_env_vars[k.strip()] = v.strip()
