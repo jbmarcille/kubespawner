@@ -150,8 +150,7 @@ def make_pod(
         security_context = V1SecurityContext()
         security_context.privileged = is_privileged
         if has_capabilities and len(has_capabilities) > 0:
-            caps = V1Capabilities()
-            caps.add(has_capabilities)
+            caps = V1Capabilities(add=has_capabilities)
             security_context.capabilities = caps
         notebook_container.security_context = security_context
 
